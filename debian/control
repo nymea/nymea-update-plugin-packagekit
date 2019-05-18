@@ -10,6 +10,7 @@ Build-Depends: debhelper (>= 9.0.0),
                qt5-qmake,
                qtbase5-dev,
                libnymea1-dev (>= 0.12),
+               libpackagekitqt5-dev,
 
 Package: nymea-update-plugin-packagekit
 Architecture: any
