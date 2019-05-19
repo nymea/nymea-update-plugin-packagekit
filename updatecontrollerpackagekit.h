@@ -18,8 +18,8 @@
  *                                                                         *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef DEBIANUPDATECONTROLLER_H
-#define DEBIANUPDATECONTROLLER_H
+#ifndef UPDATECONTROLLERPACKAGEKIT_H
+#define UPDATECONTROLLERPACKAGEKIT_H
 
 #include <QObject>
 #include <QProcess>
@@ -44,8 +44,6 @@ public:
     QList<Package> packages() const override;
     virtual QList<Repository> repositories() const;
 
-//    virtual void checkForUpdates();
-
     bool startUpdate(const QStringList &packageIds = QStringList()) override;
     bool removePackages(const QStringList &packageIds) override;
 
@@ -65,4 +63,4 @@ private:
     QList<PackageKit::Transaction*> m_runningTransactions;
 };
 
-#endif // DEBIANLINUXUPDATECONTROLLER_H
+#endif // UPDATECONTROLLERPACKAGEKIT_H

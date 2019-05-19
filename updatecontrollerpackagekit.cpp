@@ -85,7 +85,7 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
         }
     });
     connect(getPackages, &PackageKit::Transaction::finished, this, [this, upgradeIds](){
-        qCDebug(dcPlatform) << "List of packages to be upgraded:" << *upgradeIds;
+        qCDebug(dcPlatform) << "List of packages to be upgraded:\n" << upgradeIds->join('\n');
 
         PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(*upgradeIds);
         trackTransaction(upgrade);
@@ -104,7 +104,7 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
 
 bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
 {
-    qCDebug(dcPlatformUpdate) << "Starting removal of packages";
+    qCDebug(dcPlatformUpdate) << "Starting removal of packages:" << packageIds;
     QStringList *removeIds = new QStringList();
     PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterInstalled);
     trackTransaction(getPackages);
@@ -114,7 +114,7 @@ bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
         }
     });
     connect(getPackages, &PackageKit::Transaction::finished, this, [this, removeIds](){
-        qCDebug(dcPlatform) << "List of packages to be upgraded:" << *removeIds;
+        qCDebug(dcPlatform) << "List of packages to be removed:\n" << removeIds->join('\n');
 
         PackageKit::Transaction *upgrade = PackageKit::Daemon::removePackages(*removeIds);
         trackTransaction(upgrade);
@@ -279,56 +279,3 @@ void UpdateControllerPackageKit::trackTransaction(PackageKit::Transaction *trans
         }
     });
 }
-
-//bool UpdateControllerPackageKit::startUpdate()
-//{
-//    PackageKit::Transaction *t = PackageKit::Daemon::global()->getUpdates();
-
-//    QStringList *packageIds = new QStringList();
-//    connect(t, &PackageKit::Transaction::package, this, [this, t, packageIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
-//        if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
-//            qCDebug(dcPlatformUpdate) << "Updating package:" << PackageKit::Daemon::packageName(packageID);
-//            packageIds->append(packageID);
-//        }
-//    });
-//    connect(t, &PackageKit::Transaction::finished, this, [this, packageIds](){
-//        qCDebug(dcPlatformUpdate) << "Starting...";
-
-//        PackageKit::Transaction *updateTransaction = PackageKit::Daemon::updatePackages(*packageIds);
-//        connect(updateTransaction, &PackageKit::Transaction::percentageChanged, this, [updateTransaction](){
-//            qCDebug(dcPlatformUpdate) << "Upgrade percentage:" << updateTransaction->percentage();
-//        });
-//        connect(updateTransaction, &PackageKit::Transaction::finished, this, [updateTransaction](){
-//            qCDebug(dcPlatformUpdate) << "Upgrade finished.";
-//        });
-//    });
-//}
-
-//bool UpdateControllerPackageKit::updateInProgress() const
-//{
-//    return m_apt != nullptr;
-//}
-
-//QStringList UpdateControllerPackageKit::availableChannels() const
-//{
-//    return {"stable", "candidate"};
-//}
-
-//QString UpdateControllerPackageKit::currentChannel() const
-//{
-//    return m_currentChannel;
-//}
-
-//bool UpdateControllerPackageKit::selectChannel(const QString &channel)
-//{
-//    if (channel == m_currentChannel) {
-//        return true;
-//    }
-
-//    PackageKit::Transaction *repoEnable = PackageKit::Daemon::repoEnable("/etc/apt/sources.list:deb http://ci-repo.nymea.io/landing-silo/ bionic main", channel == "candidate");
-//    connect(repoEnable, &PackageKit::Transaction::finished, this, [this, repoEnable](){
-//        qCDebug(dcPlatformUpdate()) << (repoEnable->succeeded() ? "Switched repo!" : "Error switching repo!");
-//        checkForUpdates();
-//    });
-//    return true;
-//}
