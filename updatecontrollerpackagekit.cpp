@@ -26,6 +26,7 @@
 
 #include <QProcess>
 #include <QTimer>
+#include <QPointer>
 
 UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     PlatformUpdateController(parent)
@@ -81,13 +82,21 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
         getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterArch | PackageKit::Transaction::FilterNewest);
     }
     trackTransaction(getPackages);
+    m_unfinishedTransactions.append(getPackages);
 
     connect(getPackages, &PackageKit::Transaction::package, this, [upgradeIds, packageIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
         if (packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
             upgradeIds->append(packageID);
         }
     });
-    connect(getPackages, &PackageKit::Transaction::finished, this, [this, upgradeIds](){
+    connect(getPackages, &PackageKit::Transaction::finished, this, [this, upgradeIds, getPackages](){
+
+        if (!m_unfinishedTransactions.contains(getPackages)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getPackages);
+
         qCDebug(dcPlatform) << "List of packages to be upgraded:\n" << upgradeIds->join('\n');
 
         PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(*upgradeIds);
@@ -111,12 +120,21 @@ bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
     QStringList *removeIds = new QStringList();
     PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterInstalled);
     trackTransaction(getPackages);
+    m_unfinishedTransactions.append(getPackages);
+
     connect(getPackages, &PackageKit::Transaction::package, this, [packageIds, removeIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
         if (packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
             removeIds->append(packageID);
         }
     });
-    connect(getPackages, &PackageKit::Transaction::finished, this, [this, removeIds](){
+    connect(getPackages, &PackageKit::Transaction::finished, this, [this, removeIds, getPackages](){
+
+        if (!m_unfinishedTransactions.contains(getPackages)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getPackages);
+
         qCDebug(dcPlatform) << "List of packages to be removed:\n" << removeIds->join('\n');
 
         PackageKit::Transaction *upgrade = PackageKit::Daemon::removePackages(*removeIds);
@@ -155,11 +173,14 @@ void UpdateControllerPackageKit::checkForUpdates()
     }
     qCDebug(dcPlatformUpdate) << "Start update procedure...";
 
-    QHash<QString, Package> *newPackageList = new QHash<QString, Package>();
+    QHash<QString, Package>* newPackageList = new QHash<QString, Package>();
 
-    qCDebug(dcPlatformUpdate) << "Fetching installed packages...";
+    qCDebug(dcPlatformUpdate) << "Fetching available packages...";
     PackageKit::Transaction *getInstalled = PackageKit::Daemon::getPackages();
     trackTransaction(getInstalled);
+
+    m_unfinishedTransactions.append(getInstalled);
+
     connect(getInstalled, &PackageKit::Transaction::package, this, [this, newPackageList](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
         if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
 //            qCDebug(dcPlatformUpdate) << "Have installed package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
@@ -185,12 +206,19 @@ void UpdateControllerPackageKit::checkForUpdates()
             }
         }
     });
-    connect(getInstalled, &PackageKit::Transaction::finished, this, [this, newPackageList](){
+    connect(getInstalled, &PackageKit::Transaction::finished, this, [this, newPackageList, getInstalled](){
 
-        qCDebug(dcPlatformUpdate) << "Fetching installed packages finished. Fetching updates...";
+        if (!m_unfinishedTransactions.contains(getInstalled)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getInstalled);
+
+        qCDebug(dcPlatformUpdate) << "Fetching available packages finished. Fetching updates...";
 
         PackageKit::Transaction *getUpdates = PackageKit::Daemon::getUpdates();
         trackTransaction(getUpdates);
+        m_unfinishedTransactions.append(getUpdates);
         connect(getUpdates, &PackageKit::Transaction::package, this, [this, newPackageList](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
             if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
                 qCDebug(dcPlatformUpdate) << "Update available for package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
@@ -199,9 +227,15 @@ void UpdateControllerPackageKit::checkForUpdates()
                 (*newPackageList)[packageName].setUpdateAvailable(true);
             }
         });
-        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, newPackageList](){
-            qCDebug(dcPlatformUpdate) << "Fetching updates finished.";
+        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, newPackageList, getUpdates](){
 
+            if (!m_unfinishedTransactions.contains(getUpdates)) {
+                qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+                return;
+            }
+            m_unfinishedTransactions.removeAll(getUpdates);
+
+            qCDebug(dcPlatformUpdate) << "Fetching updates finished.";
             QStringList packagesToRemove;
             foreach (const QString &id, m_packages.keys()) {
                 if (!newPackageList->contains(id)) {

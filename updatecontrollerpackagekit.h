@@ -60,7 +60,12 @@ private:
     QHash<QString, Package> m_packages;
     QHash<QString, Repository> m_repositories;
 
+    // This is used to know whether to show the busy flag
     QList<PackageKit::Transaction*> m_runningTransactions;
+
+    // libpackagekitqt5 < 1.0 has a bug and emits the finished singal twice on getPackages.
+    // We need to make sure we only handle it once.
+    QList<PackageKit::Transaction*> m_unfinishedTransactions;
 };
 
 #endif // UPDATECONTROLLERPACKAGEKIT_H
