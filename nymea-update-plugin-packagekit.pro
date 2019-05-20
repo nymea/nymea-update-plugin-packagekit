@@ -3,6 +3,7 @@ QT += network dbus
 
 TARGET = $$qtLibraryTarget(nymea_updatepluginpackagekit)
 TEMPLATE = lib
+QMAKE_CXXFLAGS *= -Werror -std=c++11 -g
 
 CONFIG += plugin link_pkgconfig c++11
 PKGCONFIG += nymea
