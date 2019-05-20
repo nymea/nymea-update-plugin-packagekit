@@ -277,6 +277,9 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
             if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
                 qCDebug(dcPlatformUpdate) << "Update available for package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
                 QString packageName = PackageKit::Daemon::packageName(packageID);
+                if (!newPackageList->contains(packageName)) { // Might happen for -dev and -dbg packages as we filter them in the previous call
+                    (*newPackageList)[packageName] = Package(packageName, packageName);
+                }
                 (*newPackageList)[packageName].setSummary(summary);
                 (*newPackageList)[packageName].setCandidateVersion(PackageKit::Daemon::packageVersion(packageID));
                 (*newPackageList)[packageName].setUpdateAvailable(true);
