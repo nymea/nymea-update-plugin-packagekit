@@ -140,8 +140,12 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
 
             PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(upgradeIds->values());
             delete upgradeIds;
-            connect(upgrade, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
-                qCDebug(dcPlatformUpdate) << "Upgrade error:" << details << error;
+            connect(upgrade, &PackageKit::Transaction::errorCode, this, [this](PackageKit::Transaction::Error error, const QString &details){
+                qCDebug(dcPlatformUpdate) << "Upgrade error:" << error << details;
+                if (error == PackageKit::Transaction::ErrorPackageDownloadFailed) {
+                    // Download failed... looks like the server doesn't host the .deb files (any more). Let's refresh the cache.
+                    checkForUpdates();
+                }
             });
             connect(upgrade, &PackageKit::Transaction::package, this, [this](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
                 qCDebug(dcPlatformUpdate) << "Upgrading package:" << packageID << info << summary;
