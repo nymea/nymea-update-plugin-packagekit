@@ -48,7 +48,7 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
         emit this->availableChanged();
     });
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [](){
-        qCDebug(dcPlatformUpdate) << "PackageKit changed notification received";
+        qCDebug(dcPlatformUpdate) << "PackageKit ready" << PackageKit::Daemon::distroID();
     });
 }
 
@@ -231,6 +231,11 @@ bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, b
         qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot change repository configuration";
         return false;
     }
+
+    if (repositoryId.startsWith("virtual_")) {
+        return addRepoViaApt(repositoryId);
+    }
+
     qCDebug(dcPlatformUpdate) << "Enabling repo:" << repositoryId << enabled;
     PackageKit::Transaction *repoTransaction = PackageKit::Daemon::repoEnable(repositoryId, enabled);
     connect(repoTransaction, &PackageKit::Transaction::finished, this, [repositoryId, enabled](){
@@ -349,7 +354,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     trackTransaction(getInstalled);
 
 
-    PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList();
+    PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNotSource);
     connect(getRepos, &PackageKit::Transaction::repoDetail, this, [this](const QString &repoId, const QString &description, bool enabled){
         if (repoId.contains("ci-repo.nymea.io/") && !repoId.contains("deb-src")) {
             qCDebug(dcPlatformUpdate) << "Have Repo:" << repoId << description << enabled;
@@ -367,6 +372,45 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
                 m_repositories.insert(repoId, repo);
                 emit repositoryAdded(repo);
             }
+        }
+    });
+    connect(getRepos, &PackageKit::Transaction::finished, this, [this](){
+        if (readDistro().isEmpty()) {
+            qCWarning(dcPlatform()) << "Running on an unknonw distro. Not adding testing/experimental repository";
+            return;
+        }
+        bool foundTesting = false;
+        bool foundExperimental = false;
+        foreach (const QString &repoId, m_repositories.keys()) {
+            if (repoId.contains("ci-repo.nymea.io/landing-silo")) {
+                if (m_repositories.contains("virtual_testing")) {
+                    m_repositories.remove("virtual_testing");
+                    emit repositoryRemoved("virtual_testing");
+                }
+                foundTesting = true;
+                continue;
+            }
+            if (repoId.contains("ci-repo.nymea.io/experimental-silo")) {
+                if (m_repositories.contains("virtual_experimental")) {
+                    m_repositories.remove("virtual_experimental");
+                    emit repositoryRemoved("virtual_experimental");
+                }
+                foundExperimental = true;
+                break;
+            }
+        }
+
+        if (!foundTesting && !m_repositories.contains("virtual_testing")) {
+            QString id = "virtual_testing";
+            Repository repository(id, "Testing", false);
+            m_repositories.insert(id, repository);
+            emit repositoryAdded(repository);
+        }
+        if (!foundExperimental && !m_repositories.contains("virtual_experimental")) {
+            QString id = "virtual_experimental";
+            Repository repository(id, "Experimental", false);
+            m_repositories.insert(id, repository);
+            emit repositoryAdded(repository);
         }
     });
     trackTransaction(getRepos);
@@ -403,4 +447,50 @@ void UpdateControllerPackageKit::trackUpdateTransaction(PackageKit::Transaction 
             emit updateRunningChanged();
         }
     });
+}
+
+QString UpdateControllerPackageKit::readDistro()
+{
+    QHash<QString, QString> knownDistros;
+    knownDistros.insert("16.04", "xenial");
+    knownDistros.insert("18.04", "bionic");
+    knownDistros.insert("9", "stretch");
+    knownDistros.insert("18.04", "disco");
+
+    QStringList distroInfo = PackageKit::Daemon::distroID().split(';');
+    if (PackageKit::Daemon::mimeTypes().contains("application/x-deb") && distroInfo.count() != 3) {
+        qCWarning(dcPlatformUpdate()) << "Cannot read distro info" << PackageKit::Daemon::distroID();
+        return QString();
+    }
+    QString distroVersion = QString(distroInfo.at(1)).remove("\"");
+    if (!knownDistros.contains(distroVersion)) {
+        qCWarning(dcPlatformUpdate()) << "Distro" << PackageKit::Daemon::distroID() << "is unknown.";
+        return QString();
+    }
+    return knownDistros.value(distroVersion);
+}
+
+bool UpdateControllerPackageKit::addRepoViaApt(const QString &repo)
+{
+    if (readDistro().isEmpty()) {
+        qCWarning(dcPlatformUpdate()) << "Error reading distro info. Cannot add repository" << repo;
+        return false;
+    }
+    QHash<QString, QString> repos;
+    repos.insert("virtual_testing", "deb http://ci-repo.nymea.io/landing-silo " + readDistro() + " main");
+    repos.insert("virtual_experimental", "deb http://ci-repo.nymea.io/experimental-silo " + readDistro() + " main");
+
+    if (!repos.contains(repo)) {
+        qCWarning(dcPlatformUpdate()) << "Cannot add unknown repo" << repo;
+        return false;
+    }
+
+    int ret = QProcess::execute("apt-add-repository", {repos.value(repo), "--update"});
+    if (ret != 0) {
+        qCWarning(dcPlatformUpdate()) << "Failed to call apt-add-repository to add repo" << ret;
+        return false;
+    }
+    qCDebug(dcPlatform()) << "Added repository" << repos.value(repo);
+
+    return true;
 }

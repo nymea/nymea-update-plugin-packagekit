@@ -59,6 +59,9 @@ private:
     void trackTransaction(PackageKit::Transaction* transaction);
     void trackUpdateTransaction(PackageKit::Transaction* transaction);
 
+    QString readDistro();
+    bool addRepoViaApt(const QString &repo);
+
 private:
     QHash<QString, Package> m_packages;
     QHash<QString, Repository> m_repositories;
