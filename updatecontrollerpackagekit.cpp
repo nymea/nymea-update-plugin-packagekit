@@ -94,24 +94,23 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
         qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot start update";
         return false;
     }
-    QStringList *upgradeIds = new QStringList();
 
-    PackageKit::Transaction *getPackages = nullptr;
-    if (packageIds.isEmpty()) {
-        getPackages = PackageKit::Daemon::getUpdates();
-    } else {
-        getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterArch | PackageKit::Transaction::FilterNewest);
-    }
+    qCDebug(dcPlatformUpdate) << "Starting to update" << packageIds;
+    QHash<QString, QString> *upgradeIds = new QHash<QString, QString>; // <packageName, packageId>
+
+    // First, fetch packages with those ids. Installed and not installed ones. if packageIds is empty, this will be a no-op
+    PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterArch);
     m_unfinishedTransactions.append(getPackages);
 
     connect(getPackages, &PackageKit::Transaction::package, this, [upgradeIds, packageIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
         Q_UNUSED(info)
         Q_UNUSED(summary)
-        if (packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
-            upgradeIds->append(packageID);
+        if (packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
+            qCDebug(dcPlatformUpdate) << "Adding package to be installed:" << packageID;
+            upgradeIds->insert(PackageKit::Daemon::packageName(packageID), packageID);
         }
     });
-    connect(getPackages, &PackageKit::Transaction::finished, this, [this, upgradeIds, getPackages](){
+    connect(getPackages, &PackageKit::Transaction::finished, this, [this, packageIds, upgradeIds, getPackages](){
 
         if (!m_unfinishedTransactions.contains(getPackages)) {
             qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
@@ -119,30 +118,50 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
         }
         m_unfinishedTransactions.removeAll(getPackages);
 
-        qCDebug(dcPlatform) << "List of packages to be upgraded:\n" << upgradeIds->join('\n');
-
-        PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(*upgradeIds);
-        delete upgradeIds;
-        connect(upgrade, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
-            qCDebug(dcPlatformUpdate) << "Upgrade error:" << details << error;
-        });
-        connect(upgrade, &PackageKit::Transaction::package, this, [this](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
-            qCDebug(dcPlatformUpdate) << "Upgrading package:" << packageID << info << summary;
-            if (info == PackageKit::Transaction::InfoFinished) {
-                QString id = PackageKit::Daemon::packageName(packageID);
-                m_packages[id].setInstalledVersion(PackageKit::Daemon::packageVersion(packageID));
-                m_packages[id].setCandidateVersion(QString());
-                m_packages[id].setUpdateAvailable(false);
-                emit packageChanged(m_packages[id]);
+        // OK, we've got packages for all the packageIds. Now get potential updates.
+        PackageKit::Transaction *getUpdates = PackageKit::Daemon::getUpdates();
+        m_unfinishedTransactions.append(getUpdates);
+        connect(getUpdates, &PackageKit::Transaction::package, this, [packageIds, upgradeIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+            Q_UNUSED(info)
+            Q_UNUSED(summary)
+            if (packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
+                qCDebug(dcPlatformUpdate) << "Adding package to be updated:" << packageID;
+                upgradeIds->insert(PackageKit::Daemon::packageName(packageID), packageID);
             }
         });
-        connect(upgrade, &PackageKit::Transaction::finished, this, [](){
-            qCDebug(dcPlatformUpdate) << "Upgrade finished";
+        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, upgradeIds, getUpdates](){
+            if (!m_unfinishedTransactions.contains(getUpdates)) {
+                qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+                return;
+            }
+            m_unfinishedTransactions.removeAll(getUpdates);
+
+            qCDebug(dcPlatform) << "List of packages to be upgraded:\n" << upgradeIds->values().join('\n');
+
+            PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(upgradeIds->values());
+            delete upgradeIds;
+            connect(upgrade, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
+                qCDebug(dcPlatformUpdate) << "Upgrade error:" << details << error;
+            });
+            connect(upgrade, &PackageKit::Transaction::package, this, [this](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+                qCDebug(dcPlatformUpdate) << "Upgrading package:" << packageID << info << summary;
+                if (info == PackageKit::Transaction::InfoFinished) {
+                    QString id = PackageKit::Daemon::packageName(packageID);
+                    m_packages[id].setInstalledVersion(PackageKit::Daemon::packageVersion(packageID));
+                    m_packages[id].setCandidateVersion(QString());
+                    m_packages[id].setUpdateAvailable(false);
+                    emit packageChanged(m_packages[id]);
+                }
+            });
+            connect(upgrade, &PackageKit::Transaction::finished, this, [](){
+                qCDebug(dcPlatformUpdate) << "Upgrade finished";
+            });
+            trackUpdateTransaction(upgrade);
+
         });
+        trackUpdateTransaction(getUpdates);
 
-        trackUpdateTransaction(upgrade);
     });
-
     trackUpdateTransaction(getPackages);
     return true;
 }
