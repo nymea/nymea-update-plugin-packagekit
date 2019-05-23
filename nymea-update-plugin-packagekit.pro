@@ -17,11 +17,11 @@ INCLUDEPATH += /usr/include/packagekitqt5/PackageKit
 LIBS += -lpackagekitqt5
 
 SOURCES += \
-    updatecontrollerpackagekit.cpp \
+    updatecontrollerpackagekit.cpp
 
 
 HEADERS += \
-    updatecontrollerpackagekit.h \
+    updatecontrollerpackagekit.h
 
 
 target.path = $$[QT_INSTALL_LIBS]/nymea/platform/
