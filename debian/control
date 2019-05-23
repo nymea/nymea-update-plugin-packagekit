@@ -19,7 +19,7 @@ Multi-Arch: same
 Depends: libnymea1 (>= 0.13),
          ${misc:Depends},
          packagekit,
-         libpackagekitqt5-0,
+         libpackagekitqt5-0 | libpackagekitqt5-1,
 Provides: nymea-update-plugin-impl
 Description: PackageKit platform plugin for nymea
  The nymea daemon is a plugin based IoT (Internet of Things) server. The
