@@ -18,8 +18,8 @@
  *                                                                         *
  * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * */
 
-#ifndef DEBIANUPDATECONTROLLER_H
-#define DEBIANUPDATECONTROLLER_H
+#ifndef UPDATECONTROLLERPACKAGEKIT_H
+#define UPDATECONTROLLERPACKAGEKIT_H
 
 #include <QObject>
 #include <QProcess>
@@ -37,32 +37,44 @@ class UpdateControllerPackageKit: public PlatformUpdateController
 public:
     explicit UpdateControllerPackageKit(QObject *parent = nullptr);
 
-    bool updateManagementAvailable() override;
+    bool updateManagementAvailable() const override;
 
+    bool checkForUpdates() override;
+
+    bool busy() const override;
     bool updateRunning() const override;
 
     QList<Package> packages() const override;
     virtual QList<Repository> repositories() const;
-
-//    virtual void checkForUpdates();
 
     bool startUpdate(const QStringList &packageIds = QStringList()) override;
     bool removePackages(const QStringList &packageIds) override;
 
     bool enableRepository(const QString &repositoryId, bool enabled) override;
 
-
 private slots:
-    void checkForUpdates();
+    void refreshFromPackageKit();
 
 private:
     void trackTransaction(PackageKit::Transaction* transaction);
+    void trackUpdateTransaction(PackageKit::Transaction* transaction);
+
+    QString readDistro();
+    bool addRepoViaApt(const QString &repo);
 
 private:
     QHash<QString, Package> m_packages;
     QHash<QString, Repository> m_repositories;
 
+    // Used to set the busy flag
     QList<PackageKit::Transaction*> m_runningTransactions;
+    // Used to set the updateRunning flag
+    QList<PackageKit::Transaction*> m_updateTransactions;
+
+    // libpackagekitqt5 < 1.0 has a bug and emits the finished singal twice on getPackages.
+    // We need to make sure we only handle it once. Could probably go away when everyone is upgraded
+    // to libpackagekitqt5 >= 1.0.
+    QList<PackageKit::Transaction*> m_unfinishedTransactions;
 };
 
-#endif // DEBIANLINUXUPDATECONTROLLER_H
+#endif // UPDATECONTROLLERPACKAGEKIT_H

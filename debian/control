@@ -1,4 +1,4 @@
-Source: nymea-update-plugin-packgekit
+Source: nymea-update-plugin-packagekit
 Section: utils
 Priority: optional
 Maintainer: Michael Zanetti <michael.zanetti@nymea.io>
@@ -7,9 +7,10 @@ Homepage: https://nymea.io
 Vcs-Git: https://github.com/guh/guh.git
 Build-Depends: debhelper (>= 9.0.0),
                dpkg-dev (>= 1.16.1~),
+               libnymea1-dev (>= 0.12),
+               libpackagekitqt5-dev,
                qt5-qmake,
                qtbase5-dev,
-               libnymea1-dev (>= 0.12),
 
 Package: nymea-update-plugin-packagekit
 Architecture: any
@@ -18,6 +19,7 @@ Multi-Arch: same
 Depends: libnymea1 (>= 0.13),
          ${misc:Depends},
          packagekit,
+         libpackagekitqt5-0 | libpackagekitqt5-1,
 Provides: nymea-update-plugin-impl
 Description: PackageKit platform plugin for nymea
  The nymea daemon is a plugin based IoT (Internet of Things) server. The

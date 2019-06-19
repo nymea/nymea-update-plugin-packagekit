@@ -26,6 +26,7 @@
 
 #include <QProcess>
 #include <QTimer>
+#include <QPointer>
 
 UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     PlatformUpdateController(parent)
@@ -34,27 +35,47 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
         qCDebug(dcPlatformUpdate) << "Connected to PackageKit";
         if (PackageKit::Daemon::isRunning()) {
             PackageKit::Daemon::setHints("interactive=false");
-            checkForUpdates();
+            refreshFromPackageKit();
         }
     });
 
-    connect(PackageKit::Daemon::global(), &PackageKit::Daemon::updatesChanged, this, &UpdateControllerPackageKit::checkForUpdates);
+    connect(PackageKit::Daemon::global(), &PackageKit::Daemon::updatesChanged, this, [this]() {
+        qCDebug(dcPlatformUpdate) << "Packagekit updatesChanged notification received";
+        refreshFromPackageKit();
+    });
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::daemonQuit, this, [this](){
-        emit availableChanged();
+        // Using this-> explicitly to silence "unused capture" warning which seems to not cope well with "emit"
+        emit this->availableChanged();
     });
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [](){
-        qCDebug(dcPlatformUpdate) << "PackageKit changed notification received";
+        qCDebug(dcPlatformUpdate) << "PackageKit ready" << PackageKit::Daemon::distroID();
     });
 }
 
-bool UpdateControllerPackageKit::updateManagementAvailable()
+bool UpdateControllerPackageKit::updateManagementAvailable() const
 {
     return PackageKit::Daemon::isRunning();
 }
 
+bool UpdateControllerPackageKit::checkForUpdates()
+{
+    if (!PackageKit::Daemon::isRunning()) {
+        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot check for updates";
+        return false;
+    }
+    PackageKit::Transaction *refreshCache = PackageKit::Daemon::refreshCache(true);
+    trackTransaction(refreshCache);
+    return true;
+}
+
+bool UpdateControllerPackageKit::busy() const
+{
+    return m_runningTransactions.count() > 0 || m_updateTransactions.count() > 0;
+}
+
 bool UpdateControllerPackageKit::updateRunning() const
 {
-    return m_runningTransactions.count() > 0;
+    return m_updateTransactions.count() > 0;
 }
 
 QList<Package> UpdateControllerPackageKit::packages() const
@@ -69,88 +90,178 @@ QList<Repository> UpdateControllerPackageKit::repositories() const
 
 bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
 {
-    QStringList *upgradeIds = new QStringList();
-
-    PackageKit::Transaction *getPackages = nullptr;
-    if (packageIds.isEmpty()) {
-        getPackages = PackageKit::Daemon::getUpdates();
-    } else {
-        getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterArch | PackageKit::Transaction::FilterNewest);
+    if (!PackageKit::Daemon::isRunning()) {
+        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot start update";
+        return false;
     }
-    trackTransaction(getPackages);
+
+    qCDebug(dcPlatformUpdate) << "Starting to update" << packageIds;
+    QHash<QString, QString> *upgradeIds = new QHash<QString, QString>; // <packageName, packageId>
+
+    // First, fetch packages with those ids. Installed and not installed ones. if packageIds is empty, this will be a no-op
+    PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterArch);
+    m_unfinishedTransactions.append(getPackages);
 
     connect(getPackages, &PackageKit::Transaction::package, this, [upgradeIds, packageIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
-        if (packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
-            upgradeIds->append(packageID);
+        Q_UNUSED(info)
+        Q_UNUSED(summary)
+        if (packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
+            qCDebug(dcPlatformUpdate) << "Adding package to be installed:" << packageID;
+            upgradeIds->insert(PackageKit::Daemon::packageName(packageID), packageID);
         }
     });
-    connect(getPackages, &PackageKit::Transaction::finished, this, [this, upgradeIds](){
-        qCDebug(dcPlatform) << "List of packages to be upgraded:" << *upgradeIds;
+    connect(getPackages, &PackageKit::Transaction::finished, this, [this, packageIds, upgradeIds, getPackages](){
 
-        PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(*upgradeIds);
-        trackTransaction(upgrade);
-        delete upgradeIds;
-        connect(upgrade, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
-            qCDebug(dcPlatformUpdate) << "Upgrade error:" << details << error;
+        if (!m_unfinishedTransactions.contains(getPackages)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getPackages);
+
+        // OK, we've got packages for all the packageIds. Now get potential updates.
+        PackageKit::Transaction *getUpdates = PackageKit::Daemon::getUpdates();
+        m_unfinishedTransactions.append(getUpdates);
+        connect(getUpdates, &PackageKit::Transaction::package, this, [packageIds, upgradeIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+            Q_UNUSED(info)
+            Q_UNUSED(summary)
+            if (packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
+                qCDebug(dcPlatformUpdate) << "Adding package to be updated:" << packageID;
+                upgradeIds->insert(PackageKit::Daemon::packageName(packageID), packageID);
+            }
         });
-        connect(upgrade, &PackageKit::Transaction::package, this, [](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
-            qCDebug(dcPlatformUpdate) << "Upgrading package:" << packageID << info << summary;
+        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, upgradeIds, getUpdates](){
+            if (!m_unfinishedTransactions.contains(getUpdates)) {
+                qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+                return;
+            }
+            m_unfinishedTransactions.removeAll(getUpdates);
+
+            qCDebug(dcPlatform) << "List of packages to be upgraded:\n" << upgradeIds->values().join('\n');
+
+            PackageKit::Transaction *upgrade = PackageKit::Daemon::updatePackages(upgradeIds->values());
+            delete upgradeIds;
+            connect(upgrade, &PackageKit::Transaction::errorCode, this, [this](PackageKit::Transaction::Error error, const QString &details){
+                qCDebug(dcPlatformUpdate) << "Upgrade error:" << error << details;
+                if (error == PackageKit::Transaction::ErrorPackageDownloadFailed) {
+                    // Download failed... looks like the server doesn't host the .deb files (any more). Let's refresh the cache.
+                    checkForUpdates();
+                }
+            });
+            connect(upgrade, &PackageKit::Transaction::package, this, [this](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+                qCDebug(dcPlatformUpdate) << "Upgrading package:" << packageID << info << summary;
+                if (info == PackageKit::Transaction::InfoFinished) {
+                    QString id = PackageKit::Daemon::packageName(packageID);
+                    m_packages[id].setInstalledVersion(PackageKit::Daemon::packageVersion(packageID));
+                    m_packages[id].setCandidateVersion(QString());
+                    m_packages[id].setUpdateAvailable(false);
+                    emit packageChanged(m_packages[id]);
+                }
+            });
+            connect(upgrade, &PackageKit::Transaction::finished, this, [](){
+                qCDebug(dcPlatformUpdate) << "Upgrade finished";
+            });
+            trackUpdateTransaction(upgrade);
+
         });
-        connect(upgrade, &PackageKit::Transaction::finished, this, [](){
-            qCDebug(dcPlatformUpdate) << "Upgrade finished";
-        });
+        trackUpdateTransaction(getUpdates);
+
     });
+    trackUpdateTransaction(getPackages);
+    return true;
 }
 
 bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
 {
-    qCDebug(dcPlatformUpdate) << "Starting removal of packages";
+    if (!PackageKit::Daemon::isRunning()) {
+        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot remove packages";
+        return false;
+    }
+    qCDebug(dcPlatformUpdate) << "Starting removal of packages:" << packageIds;
     QStringList *removeIds = new QStringList();
     PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterInstalled);
-    trackTransaction(getPackages);
+    m_unfinishedTransactions.append(getPackages);
+
     connect(getPackages, &PackageKit::Transaction::package, this, [packageIds, removeIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+        Q_UNUSED(info)
+        Q_UNUSED(summary)
         if (packageIds.contains(PackageKit::Daemon::packageName(packageID))) {
             removeIds->append(packageID);
         }
     });
-    connect(getPackages, &PackageKit::Transaction::finished, this, [this, removeIds](){
-        qCDebug(dcPlatform) << "List of packages to be upgraded:" << *removeIds;
+    connect(getPackages, &PackageKit::Transaction::finished, this, [this, removeIds, getPackages](){
 
-        PackageKit::Transaction *upgrade = PackageKit::Daemon::removePackages(*removeIds);
-        trackTransaction(upgrade);
+        if (!m_unfinishedTransactions.contains(getPackages)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getPackages);
+
+        qCDebug(dcPlatformUpdate) << "List of packages to be removed:\n" << removeIds->join('\n');
+
+        PackageKit::Transaction *remove = PackageKit::Daemon::removePackages(*removeIds);
         delete removeIds;
 
-        connect(upgrade, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
+        connect(remove, &PackageKit::Transaction::errorCode, this, [](PackageKit::Transaction::Error error, const QString &details){
             qCDebug(dcPlatformUpdate) << "Remove error:" << details << error;
         });
-        connect(upgrade, &PackageKit::Transaction::package, this, [](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+        connect(remove, &PackageKit::Transaction::package, this, [this](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
             qCDebug(dcPlatformUpdate) << "Removing package:" << packageID << info << summary;
+            if (info == PackageKit::Transaction::InfoFinished) {
+                QString id = PackageKit::Daemon::packageName(packageID);
+                m_packages[id].setInstalledVersion(QString());
+                m_packages[id].setCandidateVersion(PackageKit::Daemon::packageVersion(packageID));
+                m_packages[id].setCanRemove(true);
+                emit packageChanged(m_packages[id]);
+            }
         });
-        connect(upgrade, &PackageKit::Transaction::finished, this, [](){
+        connect(remove, &PackageKit::Transaction::finished, this, [](){
             qCDebug(dcPlatformUpdate) << "Remove packages finished";
         });
+
+        trackUpdateTransaction(remove);
     });
+
+    trackUpdateTransaction(getPackages);
+    return true;
 }
 
 bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, bool enabled)
 {
+    if (!PackageKit::Daemon::isRunning()) {
+        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot change repository configuration";
+        return false;
+    }
+
+    if (repositoryId.startsWith("virtual_")) {
+        return addRepoViaApt(repositoryId);
+    }
+
     qCDebug(dcPlatformUpdate) << "Enabling repo:" << repositoryId << enabled;
     PackageKit::Transaction *repoTransaction = PackageKit::Daemon::repoEnable(repositoryId, enabled);
-    trackTransaction(repoTransaction);
     connect(repoTransaction, &PackageKit::Transaction::finished, this, [repositoryId, enabled](){
         qCDebug(dcPlatformUpdate) << "Repository" << repositoryId << (enabled ? "enabled" : "disabled");
     });
     connect(repoTransaction, &PackageKit::Transaction::errorCode, this, [repositoryId, enabled](PackageKit::Transaction::Error error, const QString &details){
-        qCDebug(dcPlatformUpdate) << "Error" << (enabled ? "enabling" : "disabling") << "repository" << repositoryId;
+        qCDebug(dcPlatformUpdate) << "Error" << (enabled ? "enabling" : "disabling") << "repository" << repositoryId << "(" << error << details << ")";
     });
+    trackTransaction(repoTransaction);
+    return true;
 }
 
-void UpdateControllerPackageKit::checkForUpdates()
+void UpdateControllerPackageKit::refreshFromPackageKit()
 {
-    QHash<QString, Package> *newPackageList = new QHash<QString, Package>();
+    if (m_runningTransactions.count() > 0) {
+        return;
+    }
+    qCDebug(dcPlatformUpdate) << "Start update procedure...";
 
-    PackageKit::Transaction *getInstalled = PackageKit::Daemon::getPackages();
-    trackTransaction(getInstalled);
+    QHash<QString, Package>* newPackageList = new QHash<QString, Package>();
+
+    qCDebug(dcPlatformUpdate) << "Fetching available packages...";
+    PackageKit::Transaction *getInstalled = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterNotDevel);
+
+    m_unfinishedTransactions.append(getInstalled);
+
     connect(getInstalled, &PackageKit::Transaction::package, this, [this, newPackageList](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
         if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
 //            qCDebug(dcPlatformUpdate) << "Have installed package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
@@ -167,6 +278,7 @@ void UpdateControllerPackageKit::checkForUpdates()
                 }
             } else {
                 Package package(packageName, packageName);
+                package.setSummary(summary);
                 if (info == PackageKit::Transaction::InfoInstalled) {
                     package.setInstalledVersion(PackageKit::Daemon::packageVersion(packageID));
                     package.setCanRemove(true);
@@ -176,23 +288,40 @@ void UpdateControllerPackageKit::checkForUpdates()
             }
         }
     });
-    connect(getInstalled, &PackageKit::Transaction::finished, this, [this, newPackageList](){
+    connect(getInstalled, &PackageKit::Transaction::finished, this, [this, newPackageList, getInstalled](){
 
-        qCDebug(dcPlatformUpdate) << "Fetching installed packages finished. Fetching updates...";
+        if (!m_unfinishedTransactions.contains(getInstalled)) {
+            qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+            return;
+        }
+        m_unfinishedTransactions.removeAll(getInstalled);
+
+        qCDebug(dcPlatformUpdate) << "Fetching available packages finished. Fetching updates...";
 
         PackageKit::Transaction *getUpdates = PackageKit::Daemon::getUpdates();
-        trackTransaction(getUpdates);
+        m_unfinishedTransactions.append(getUpdates);
         connect(getUpdates, &PackageKit::Transaction::package, this, [this, newPackageList](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
+            Q_UNUSED(info)
             if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
-                qCDebug(dcPlatformUpdate) << "Have update package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
+                qCDebug(dcPlatformUpdate) << "Update available for package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
                 QString packageName = PackageKit::Daemon::packageName(packageID);
+                if (!newPackageList->contains(packageName)) { // Might happen for -dev and -dbg packages as we filter them in the previous call
+                    (*newPackageList)[packageName] = Package(packageName, packageName);
+                }
+                (*newPackageList)[packageName].setSummary(summary);
                 (*newPackageList)[packageName].setCandidateVersion(PackageKit::Daemon::packageVersion(packageID));
                 (*newPackageList)[packageName].setUpdateAvailable(true);
             }
         });
-        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, newPackageList](){
-            qCDebug(dcPlatformUpdate) << "Fetching updates finished, fetching update details...";
+        connect(getUpdates, &PackageKit::Transaction::finished, this, [this, newPackageList, getUpdates](){
 
+            if (!m_unfinishedTransactions.contains(getUpdates)) {
+                qCWarning(dcPlatformUpdate) << "Transaction emitted finished twice! Ignoring second event. (Old packagekitqt version?)";
+                return;
+            }
+            m_unfinishedTransactions.removeAll(getUpdates);
+
+            qCDebug(dcPlatformUpdate) << "Fetching updates finished.";
             QStringList packagesToRemove;
             foreach (const QString &id, m_packages.keys()) {
                 if (!newPackageList->contains(id)) {
@@ -201,50 +330,31 @@ void UpdateControllerPackageKit::checkForUpdates()
             }
             while (!packagesToRemove.isEmpty()) {
                 Package p = m_packages.take(packagesToRemove.takeFirst());
+                qCDebug(dcPlatformUpdate) << "Removed package" << p.packageId();
                 emit packageRemoved(p.packageId());
             }
 
             foreach (const QString &id, newPackageList->keys()) {
                 if (!m_packages.contains(id)) {
                     m_packages.insert(id, newPackageList->value(id));
+                    qCDebug(dcPlatformUpdate) << "Added package" << id;
                     emit packageAdded(newPackageList->value(id));
                 } else {
                     if (m_packages.value(id) != newPackageList->value(id)) {
                         m_packages[id] = newPackageList->value(id);
+                        qCDebug(dcPlatformUpdate) << "Package" << id << "changed";
                         emit packageChanged(m_packages[id]);
                     }
                 }
             }
             delete newPackageList;
         });
-
-
-//        PackageKit::Transaction *t = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterNotInstalled | PackageKit::Transaction::FilterNotDevel);
-//        connect(t, &PackageKit::Transaction::package, this, [this, t](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
-//            if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
-//                QString packageName = PackageKit::Daemon::packageName(packageID);
-//                qCDebug(dcPlatformUpdate) << "Have package:" << packageName << PackageKit::Daemon::packageVersion(packageID);
-//                if (m_packages.contains(packageName)) {
-//                    m_packages[packageName].setCandidateVersion(PackageKit::Daemon::packageVersion(packageID));
-//                    emit packageChanged(m_packages[packageName]);
-//                } else {
-//                    Package package(packageName, packageName);
-//                    package.setCandidateVersion(PackageKit::Daemon::packageVersion(packageID));
-//                    m_packages.insert(packageName, package);
-//                    emit packageAdded(package);
-//                }
-//            }
-//        });
-//        connect(t, &PackageKit::Transaction::finished, this, [this, t](){
-//            qCDebug(dcPlatformUpdate) << "finished";
-
-//        });
-
+        trackTransaction(getUpdates);
     });
+    trackTransaction(getInstalled);
 
 
-    PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList();
-    trackTransaction(getRepos);
+    PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNotSource);
     connect(getRepos, &PackageKit::Transaction::repoDetail, this, [this](const QString &repoId, const QString &description, bool enabled){
         if (repoId.contains("ci-repo.nymea.io/") && !repoId.contains("deb-src")) {
             qCDebug(dcPlatformUpdate) << "Have Repo:" << repoId << description << enabled;
@@ -264,71 +374,123 @@ void UpdateControllerPackageKit::checkForUpdates()
             }
         }
     });
+    connect(getRepos, &PackageKit::Transaction::finished, this, [this](){
+        if (readDistro().isEmpty()) {
+            qCWarning(dcPlatform()) << "Running on an unknonw distro. Not adding testing/experimental repository";
+            return;
+        }
+        bool foundTesting = false;
+        bool foundExperimental = false;
+        foreach (const QString &repoId, m_repositories.keys()) {
+            if (repoId.contains("ci-repo.nymea.io/landing-silo")) {
+                if (m_repositories.contains("virtual_testing")) {
+                    m_repositories.remove("virtual_testing");
+                    emit repositoryRemoved("virtual_testing");
+                }
+                foundTesting = true;
+                continue;
+            }
+            if (repoId.contains("ci-repo.nymea.io/experimental-silo")) {
+                if (m_repositories.contains("virtual_experimental")) {
+                    m_repositories.remove("virtual_experimental");
+                    emit repositoryRemoved("virtual_experimental");
+                }
+                foundExperimental = true;
+                break;
+            }
+        }
+
+        if (!foundTesting && !m_repositories.contains("virtual_testing")) {
+            QString id = "virtual_testing";
+            Repository repository(id, "Testing", false);
+            m_repositories.insert(id, repository);
+            emit repositoryAdded(repository);
+        }
+        if (!foundExperimental && !m_repositories.contains("virtual_experimental")) {
+            QString id = "virtual_experimental";
+            Repository repository(id, "Experimental", false);
+            m_repositories.insert(id, repository);
+            emit repositoryAdded(repository);
+        }
+    });
+    trackTransaction(getRepos);
+
 }
 
 void UpdateControllerPackageKit::trackTransaction(PackageKit::Transaction *transaction)
 {
     m_runningTransactions.append(transaction);
+    qCDebug(dcPlatformUpdate) << "Started transaction" << transaction << "(" << m_runningTransactions.count() << "running)";
     if (m_runningTransactions.count() == 1) {
-        emit updateRunningChanged();
+        emit busyChanged();
     }
     connect(transaction, &PackageKit::Transaction::finished, this, [this, transaction](){
         m_runningTransactions.removeAll(transaction);
+        qCDebug(dcPlatformUpdate) << "Transaction" << transaction << " finished (" << m_runningTransactions.count() << "running)";
         if (m_runningTransactions.count() == 0) {
+            emit busyChanged();
+        }
+    });
+}
+
+void UpdateControllerPackageKit::trackUpdateTransaction(PackageKit::Transaction *transaction)
+{
+    m_updateTransactions.append(transaction);
+    qCDebug(dcPlatformUpdate) << "Started update transaction" << transaction << "(" << m_updateTransactions.count() << "running)";
+    if (m_updateTransactions.count() == 1) {
+        emit updateRunningChanged();
+    }
+    connect(transaction, &PackageKit::Transaction::finished, this, [this, transaction](){
+        m_updateTransactions.removeAll(transaction);
+        qCDebug(dcPlatformUpdate) << "Update Transaction" << transaction << "finished (" << m_updateTransactions.count() << "running)";
+        if (m_updateTransactions.count() == 0) {
             emit updateRunningChanged();
         }
     });
 }
 
-//bool UpdateControllerPackageKit::startUpdate()
-//{
-//    PackageKit::Transaction *t = PackageKit::Daemon::global()->getUpdates();
+QString UpdateControllerPackageKit::readDistro()
+{
+    QHash<QString, QString> knownDistros;
+    knownDistros.insert("16.04", "xenial");
+    knownDistros.insert("18.04", "bionic");
+    knownDistros.insert("9", "stretch");
+    knownDistros.insert("18.04", "disco");
 
-//    QStringList *packageIds = new QStringList();
-//    connect(t, &PackageKit::Transaction::package, this, [this, t, packageIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
-//        if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
-//            qCDebug(dcPlatformUpdate) << "Updating package:" << PackageKit::Daemon::packageName(packageID);
-//            packageIds->append(packageID);
-//        }
-//    });
-//    connect(t, &PackageKit::Transaction::finished, this, [this, packageIds](){
-//        qCDebug(dcPlatformUpdate) << "Starting...";
+    QStringList distroInfo = PackageKit::Daemon::distroID().split(';');
+    if (PackageKit::Daemon::mimeTypes().contains("application/x-deb") && distroInfo.count() != 3) {
+        qCWarning(dcPlatformUpdate()) << "Cannot read distro info" << PackageKit::Daemon::distroID();
+        return QString();
+    }
+    QString distroVersion = QString(distroInfo.at(1)).remove("\"");
+    if (!knownDistros.contains(distroVersion)) {
+        qCWarning(dcPlatformUpdate()) << "Distro" << PackageKit::Daemon::distroID() << "is unknown.";
+        return QString();
+    }
+    return knownDistros.value(distroVersion);
+}
 
-//        PackageKit::Transaction *updateTransaction = PackageKit::Daemon::updatePackages(*packageIds);
-//        connect(updateTransaction, &PackageKit::Transaction::percentageChanged, this, [updateTransaction](){
-//            qCDebug(dcPlatformUpdate) << "Upgrade percentage:" << updateTransaction->percentage();
-//        });
-//        connect(updateTransaction, &PackageKit::Transaction::finished, this, [updateTransaction](){
-//            qCDebug(dcPlatformUpdate) << "Upgrade finished.";
-//        });
-//    });
-//}
+bool UpdateControllerPackageKit::addRepoViaApt(const QString &repo)
+{
+    if (readDistro().isEmpty()) {
+        qCWarning(dcPlatformUpdate()) << "Error reading distro info. Cannot add repository" << repo;
+        return false;
+    }
+    QHash<QString, QString> repos;
+    repos.insert("virtual_testing", "deb http://ci-repo.nymea.io/landing-silo " + readDistro() + " main");
+    repos.insert("virtual_experimental", "deb http://ci-repo.nymea.io/experimental-silo " + readDistro() + " main");
 
-//bool UpdateControllerPackageKit::updateInProgress() const
-//{
-//    return m_apt != nullptr;
-//}
+    if (!repos.contains(repo)) {
+        qCWarning(dcPlatformUpdate()) << "Cannot add unknown repo" << repo;
+        return false;
+    }
 
-//QStringList UpdateControllerPackageKit::availableChannels() const
-//{
-//    return {"stable", "candidate"};
-//}
+    int ret = QProcess::execute("apt-add-repository", {repos.value(repo), "--update"});
+    if (ret != 0) {
+        qCWarning(dcPlatformUpdate()) << "Failed to call apt-add-repository to add repo" << ret;
+        return false;
+    }
+    qCDebug(dcPlatform()) << "Added repository" << repos.value(repo);
 
-//QString UpdateControllerPackageKit::currentChannel() const
-//{
-//    return m_currentChannel;
-//}
-
-//bool UpdateControllerPackageKit::selectChannel(const QString &channel)
-//{
-//    if (channel == m_currentChannel) {
-//        return true;
-//    }
-
-//    PackageKit::Transaction *repoEnable = PackageKit::Daemon::repoEnable("/etc/apt/sources.list:deb http://ci-repo.nymea.io/landing-silo/ bionic main", channel == "candidate");
-//    connect(repoEnable, &PackageKit::Transaction::finished, this, [this, repoEnable](){
-//        qCDebug(dcPlatformUpdate()) << (repoEnable->succeeded() ? "Switched repo!" : "Error switching repo!");
-//        checkForUpdates();
-//    });
-//    return true;
-//}
+    return true;
+}
