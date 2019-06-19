@@ -1,5 +1,7 @@
-nymea-update-plugin-packagekit (0.1) UNRELEASED; urgency=medium
+nymea-update-plugin-packagekit (0.1) xenial; urgency=medium
 
+  [ Michael Zanetti ]
   * Initial release.
+  * Fixes
 
- -- Michael Zanetti <michael.zanetti@nymea.io>  Mon, 08 Apr 2019 13:49:49 +0200
+ -- Jenkins <jenkins@nymea.io>  Wed, 19 Jun 2019 23:52:49 +0200
