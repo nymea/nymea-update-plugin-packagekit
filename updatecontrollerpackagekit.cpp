@@ -360,6 +360,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
             qCDebug(dcPlatformUpdate) << "Have Repo:" << repoId << description << enabled;
             if (m_repositories.contains(repoId)) {
                 m_repositories[repoId].setEnabled(enabled);
+                qCDebug(dcPlatformUpdate) << "Updating existing Repo:" << repoId;
                 emit repositoryChanged(m_repositories.value(repoId));
             } else {
                 QString description = repoId;
@@ -370,13 +371,14 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
                 }
                 Repository repo(repoId, description, enabled);
                 m_repositories.insert(repoId, repo);
+                qCDebug(dcPlatformUpdate) << "Adding new Repo:" << repoId << description << enabled;
                 emit repositoryAdded(repo);
             }
         }
     });
     connect(getRepos, &PackageKit::Transaction::finished, this, [this](){
         if (readDistro().isEmpty()) {
-            qCWarning(dcPlatform()) << "Running on an unknonw distro. Not adding testing/experimental repository";
+            qCWarning(dcPlatformUpdate) << "Running on an unknonw distro. Not adding testing/experimental repository";
             return;
         }
         bool foundTesting = false;
@@ -384,6 +386,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
         foreach (const QString &repoId, m_repositories.keys()) {
             if (repoId.contains("ci-repo.nymea.io/landing-silo")) {
                 if (m_repositories.contains("virtual_testing")) {
+                    qCDebug(dcPlatformUpdate) << "Replacing virtual_testing with real landing-silo";
                     m_repositories.remove("virtual_testing");
                     emit repositoryRemoved("virtual_testing");
                 }
@@ -392,11 +395,12 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
             }
             if (repoId.contains("ci-repo.nymea.io/experimental-silo")) {
                 if (m_repositories.contains("virtual_experimental")) {
+                    qCDebug(dcPlatformUpdate) << "Replacing virtual_experimental with real experimental-silo";
                     m_repositories.remove("virtual_experimental");
                     emit repositoryRemoved("virtual_experimental");
                 }
                 foundExperimental = true;
-                break;
+                continue;
             }
         }
 
@@ -404,12 +408,14 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
             QString id = "virtual_testing";
             Repository repository(id, "Testing", false);
             m_repositories.insert(id, repository);
+            qCDebug(dcPlatformUpdate) << "Testing not found. Adding virtual repo:" << id;
             emit repositoryAdded(repository);
         }
         if (!foundExperimental && !m_repositories.contains("virtual_experimental")) {
             QString id = "virtual_experimental";
             Repository repository(id, "Experimental", false);
             m_repositories.insert(id, repository);
+            qCDebug(dcPlatformUpdate) << "Experimental not found. Adding virtual repo:" << id;
             emit repositoryAdded(repository);
         }
     });
