@@ -4,7 +4,7 @@ nymea-update-plugin-packagekit (0.2) xenial; urgency=medium
   * Fix the distro parsing mechanism
   * Fix an issue where the Testing repo might appear multiple times.
 
- -- Jenkins <jenkins@nymea.io>  Thu, 04 Jul 2019 17:21:06 +0200
+ -- Jenkins <jenkins@nymea.io>  Mon, 02 Sep 2019 18:02:21 +0200
 
 nymea-update-plugin-packagekit (0.1) xenial; urgency=medium
 
