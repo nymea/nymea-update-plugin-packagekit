@@ -458,10 +458,13 @@ void UpdateControllerPackageKit::trackUpdateTransaction(PackageKit::Transaction 
 QString UpdateControllerPackageKit::readDistro()
 {
     QHash<QString, QString> knownDistros;
+    // Ubuntu
     knownDistros.insert("16.04", "xenial");
     knownDistros.insert("18.04", "bionic");
-    knownDistros.insert("9", "stretch");
     knownDistros.insert("19.04", "disco");
+    // Debian
+    knownDistros.insert("9", "stretch");
+    knownDistros.insert("10", "buster");
 
     QStringList distroInfo = PackageKit::Daemon::distroID().split(';');
     if (PackageKit::Daemon::mimeTypes().contains("application/x-deb") && distroInfo.count() != 3) {
