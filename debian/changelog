@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (0.3) xenial; urgency=medium
+
+  [ Michael Zanetti ]
+  * Add support for Debian Buster
+
+ -- Jenkins <jenkins@nymea.io>  Fri, 13 Sep 2019 14:27:47 +0200
+
 nymea-update-plugin-packagekit (0.2) xenial; urgency=medium
 
   [ Michael Zanetti ]
