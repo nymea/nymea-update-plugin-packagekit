@@ -233,7 +233,12 @@ bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, b
     }
 
     if (repositoryId.startsWith("virtual_")) {
-        return addRepoViaApt(repositoryId);
+        bool success = addRepoViaApt(repositoryId);
+        if (success) {
+            m_repositories[repositoryId].setEnabled(enabled);
+            emit repositoryChanged(m_repositories.value(repositoryId));
+        }
+        return success;
     }
 
     qCDebug(dcPlatformUpdate) << "Enabling repo:" << repositoryId << enabled;
@@ -245,6 +250,10 @@ bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, b
         qCDebug(dcPlatformUpdate) << "Error" << (enabled ? "enabling" : "disabling") << "repository" << repositoryId << "(" << error << details << ")";
     });
     trackTransaction(repoTransaction);
+
+    m_repositories[repositoryId].setEnabled(enabled);
+    emit repositoryChanged(m_repositories.value(repositoryId));
+
     return true;
 }
 
