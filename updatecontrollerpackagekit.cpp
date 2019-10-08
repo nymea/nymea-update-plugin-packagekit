@@ -24,13 +24,18 @@
 #include <Daemon>
 #include <Details>
 
-#include <QProcess>
 #include <QTimer>
 #include <QPointer>
+#include <QFile>
 
 UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     PlatformUpdateController(parent)
 {
+    m_refreshTimer = new QTimer(this);
+    m_refreshTimer->setSingleShot(true);
+    m_refreshTimer->setInterval(6 * 60 * 60 * 1000); // every 6 hours
+    connect(m_refreshTimer, &QTimer::timeout, this, &UpdateControllerPackageKit::checkForUpdates);
+
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::isRunningChanged, this, [this](){
         qCDebug(dcPlatformUpdate) << "Connected to PackageKit";
         if (PackageKit::Daemon::isRunning()) {
@@ -47,8 +52,9 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
         // Using this-> explicitly to silence "unused capture" warning which seems to not cope well with "emit"
         emit this->availableChanged();
     });
-    connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [](){
+    connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [this](){
         qCDebug(dcPlatformUpdate) << "PackageKit ready" << PackageKit::Daemon::distroID();
+        checkForUpdates();
     });
 }
 
@@ -63,7 +69,13 @@ bool UpdateControllerPackageKit::checkForUpdates()
         qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot check for updates";
         return false;
     }
+    qCDebug(dcPlatformUpdate()) << "Refreshing system package cache...";
     PackageKit::Transaction *refreshCache = PackageKit::Daemon::refreshCache(true);
+    connect(refreshCache, &PackageKit::Transaction::finished, this, [this](){
+        qCDebug(dcPlatformUpdate()) << "System package cache refreshed. Next update is at" << QDateTime::currentDateTime().addMSecs(m_refreshTimer->interval());
+        m_refreshTimer->start();
+        refreshFromPackageKit();
+    });
     trackTransaction(refreshCache);
     return true;
 }
@@ -233,7 +245,7 @@ bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, b
     }
 
     if (repositoryId.startsWith("virtual_")) {
-        bool success = addRepoViaApt(repositoryId);
+        bool success = addRepoManually(repositoryId);
         if (success) {
             m_repositories[repositoryId].setEnabled(enabled);
             emit repositoryChanged(m_repositories.value(repositoryId));
@@ -254,6 +266,8 @@ bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, b
     m_repositories[repositoryId].setEnabled(enabled);
     emit repositoryChanged(m_repositories.value(repositoryId));
 
+    checkForUpdates();
+
     return true;
 }
 
@@ -262,11 +276,9 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     if (m_runningTransactions.count() > 0) {
         return;
     }
-    qCDebug(dcPlatformUpdate) << "Start update procedure...";
-
     QHash<QString, Package>* newPackageList = new QHash<QString, Package>();
 
-    qCDebug(dcPlatformUpdate) << "Fetching available packages...";
+    qCDebug(dcPlatformUpdate) << "Reading installed/available packages from backend...";
     PackageKit::Transaction *getInstalled = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterNotDevel);
 
     m_unfinishedTransactions.append(getInstalled);
@@ -305,7 +317,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
         }
         m_unfinishedTransactions.removeAll(getInstalled);
 
-        qCDebug(dcPlatformUpdate) << "Fetching available packages finished. Fetching updates...";
+        qCDebug(dcPlatformUpdate) << "Fetching installed/available packages finished. Fetching list of possible updates from backend...";
 
         PackageKit::Transaction *getUpdates = PackageKit::Daemon::getUpdates();
         m_unfinishedTransactions.append(getUpdates);
@@ -330,7 +342,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
             }
             m_unfinishedTransactions.removeAll(getUpdates);
 
-            qCDebug(dcPlatformUpdate) << "Fetching updates finished.";
+            qCDebug(dcPlatformUpdate) << "Fetching possible updates finished.";
             QStringList packagesToRemove;
             foreach (const QString &id, m_packages.keys()) {
                 if (!newPackageList->contains(id)) {
@@ -363,13 +375,14 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     trackTransaction(getInstalled);
 
 
+    qCDebug(dcPlatformUpdate()) << "Fetching list of repositories from backend...";
     PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNotSource);
     connect(getRepos, &PackageKit::Transaction::repoDetail, this, [this](const QString &repoId, const QString &description, bool enabled){
         if (repoId.contains("ci-repo.nymea.io/") && !repoId.contains("deb-src")) {
-            qCDebug(dcPlatformUpdate) << "Have Repo:" << repoId << description << enabled;
+            qCDebug(dcPlatformUpdate) << "Found repository enabled in system:" << repoId << description << (enabled ? "(enabled)" : "(disabled)");
             if (m_repositories.contains(repoId)) {
                 m_repositories[repoId].setEnabled(enabled);
-                qCDebug(dcPlatformUpdate) << "Updating existing Repo:" << repoId;
+                qCDebug(dcPlatformUpdate) << "Updating existing repository in state cache:" << repoId << (enabled ? "(enabled)" : "(disabled)");
                 emit repositoryChanged(m_repositories.value(repoId));
             } else {
                 QString description = repoId;
@@ -380,7 +393,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
                 }
                 Repository repo(repoId, description, enabled);
                 m_repositories.insert(repoId, repo);
-                qCDebug(dcPlatformUpdate) << "Adding new Repo:" << repoId << description << enabled;
+                qCDebug(dcPlatformUpdate) << "Adding new repository to state cache:" << repoId << description << (enabled ? "(enabled)" : "(disabled)");
                 emit repositoryAdded(repo);
             }
         }
@@ -436,7 +449,7 @@ void UpdateControllerPackageKit::trackTransaction(PackageKit::Transaction *trans
 {
     m_runningTransactions.append(transaction);
     qCDebug(dcPlatformUpdate) << "Started transaction" << transaction << "(" << m_runningTransactions.count() << "running)";
-    if (m_runningTransactions.count() == 1) {
+    if (m_runningTransactions.count() > 0) {
         emit busyChanged();
     }
     connect(transaction, &PackageKit::Transaction::finished, this, [this, transaction](){
@@ -488,7 +501,7 @@ QString UpdateControllerPackageKit::readDistro()
     return knownDistros.value(distroVersion);
 }
 
-bool UpdateControllerPackageKit::addRepoViaApt(const QString &repo)
+bool UpdateControllerPackageKit::addRepoManually(const QString &repo)
 {
     if (readDistro().isEmpty()) {
         qCWarning(dcPlatformUpdate()) << "Error reading distro info. Cannot add repository" << repo;
@@ -503,12 +516,24 @@ bool UpdateControllerPackageKit::addRepoViaApt(const QString &repo)
         return false;
     }
 
-    int ret = QProcess::execute("apt-add-repository", {repos.value(repo), "--update"});
-    if (ret != 0) {
-        qCWarning(dcPlatformUpdate()) << "Failed to call apt-add-repository to add repo" << ret;
+    QString fileName("/etc/apt/sources.list.d/nymea.list");
+    QFile sourcesList(fileName);
+    if (!sourcesList.open(QFile::ReadWrite)) {
+        qCWarning(dcPlatformUpdate()) << "Failed to open" << fileName << "for writing. Not adding repo.";
+        return false;
+    }
+    bool ok;
+    ok = sourcesList.seek(sourcesList.size());
+    QString line = QString("\n\n%1\n").arg(repos.value(repo));
+    qint64 ret = sourcesList.write(line.toUtf8());
+    ok &= (ret == line.length());
+    if (!ok) {
+        qCWarning(dcPlatformUpdate()) << "Failed to write repository to file" << fileName;
         return false;
     }
     qCDebug(dcPlatform()) << "Added repository" << repos.value(repo);
+
+    checkForUpdates();
 
     return true;
 }
