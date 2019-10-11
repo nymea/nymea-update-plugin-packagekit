@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (0.4) xenial; urgency=medium
+
+  [ Michael Zanetti ]
+  * Improve behavior on enable/disable repository a bit
+
+ -- Jenkins <jenkins@nymea.io>  Sat, 12 Oct 2019 01:46:36 +0200
+
 nymea-update-plugin-packagekit (0.3) xenial; urgency=medium
 
   [ Michael Zanetti ]
