@@ -46,7 +46,7 @@ public:
     bool updateRunning() const override;
 
     QList<Package> packages() const override;
-    virtual QList<Repository> repositories() const;
+    QList<Repository> repositories() const override;
 
     bool startUpdate(const QStringList &packageIds = QStringList()) override;
     bool removePackages(const QStringList &packageIds) override;
@@ -64,6 +64,7 @@ private:
     bool addRepoManually(const QString &repo);
 
 private:
+    bool m_available = false;
     QHash<QString, Package> m_packages;
     QHash<QString, Repository> m_repositories;
 

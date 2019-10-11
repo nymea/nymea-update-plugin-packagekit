@@ -37,20 +37,24 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     connect(m_refreshTimer, &QTimer::timeout, this, &UpdateControllerPackageKit::checkForUpdates);
 
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::isRunningChanged, this, [this](){
-        qCDebug(dcPlatformUpdate) << "Connected to PackageKit";
         if (PackageKit::Daemon::isRunning()) {
+            qCDebug(dcPlatformUpdate) << "Connected to PackageKit";
             PackageKit::Daemon::setHints("interactive=false");
+
+            m_available = true;
+            emit availableChanged();
+
             refreshFromPackageKit();
+
+        } else {
+            qCWarning(dcPlatformUpdate()) << "Connection to PackageKit lost";
+            // No worries, it'll be autostarted via dbus
         }
     });
 
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::updatesChanged, this, [this]() {
         qCDebug(dcPlatformUpdate) << "Packagekit updatesChanged notification received";
         refreshFromPackageKit();
-    });
-    connect(PackageKit::Daemon::global(), &PackageKit::Daemon::daemonQuit, this, [this](){
-        // Using this-> explicitly to silence "unused capture" warning which seems to not cope well with "emit"
-        emit this->availableChanged();
     });
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [this](){
         qCDebug(dcPlatformUpdate) << "PackageKit ready" << PackageKit::Daemon::distroID();
@@ -60,15 +64,11 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
 
 bool UpdateControllerPackageKit::updateManagementAvailable() const
 {
-    return PackageKit::Daemon::isRunning();
+    return m_available;
 }
 
 bool UpdateControllerPackageKit::checkForUpdates()
 {
-    if (!PackageKit::Daemon::isRunning()) {
-        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot check for updates";
-        return false;
-    }
     qCDebug(dcPlatformUpdate()) << "Refreshing system package cache...";
     PackageKit::Transaction *refreshCache = PackageKit::Daemon::refreshCache(true);
     connect(refreshCache, &PackageKit::Transaction::finished, this, [this](){
@@ -102,11 +102,6 @@ QList<Repository> UpdateControllerPackageKit::repositories() const
 
 bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
 {
-    if (!PackageKit::Daemon::isRunning()) {
-        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot start update";
-        return false;
-    }
-
     qCDebug(dcPlatformUpdate) << "Starting to update" << packageIds;
     QHash<QString, QString> *upgradeIds = new QHash<QString, QString>; // <packageName, packageId>
 
@@ -184,10 +179,6 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
 
 bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
 {
-    if (!PackageKit::Daemon::isRunning()) {
-        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot remove packages";
-        return false;
-    }
     qCDebug(dcPlatformUpdate) << "Starting removal of packages:" << packageIds;
     QStringList *removeIds = new QStringList();
     PackageKit::Transaction *getPackages = PackageKit::Daemon::getPackages(PackageKit::Transaction::FilterInstalled);
@@ -239,11 +230,6 @@ bool UpdateControllerPackageKit::removePackages(const QStringList &packageIds)
 
 bool UpdateControllerPackageKit::enableRepository(const QString &repositoryId, bool enabled)
 {
-    if (!PackageKit::Daemon::isRunning()) {
-        qCWarning(dcPlatformUpdate) << "PackageKit not running. Cannot change repository configuration";
-        return false;
-    }
-
     if (repositoryId.startsWith("virtual_")) {
         bool success = addRepoManually(repositoryId);
         if (success) {
