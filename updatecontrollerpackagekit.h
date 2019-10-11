@@ -25,6 +25,7 @@
 #include <QProcess>
 #include <QNetworkAccessManager>
 #include <Transaction>
+#include <QTimer>
 
 #include "platform/platformupdatecontroller.h"
 
@@ -45,7 +46,7 @@ public:
     bool updateRunning() const override;
 
     QList<Package> packages() const override;
-    virtual QList<Repository> repositories() const;
+    QList<Repository> repositories() const override;
 
     bool startUpdate(const QStringList &packageIds = QStringList()) override;
     bool removePackages(const QStringList &packageIds) override;
@@ -60,9 +61,10 @@ private:
     void trackUpdateTransaction(PackageKit::Transaction* transaction);
 
     QString readDistro();
-    bool addRepoViaApt(const QString &repo);
+    bool addRepoManually(const QString &repo);
 
 private:
+    bool m_available = false;
     QHash<QString, Package> m_packages;
     QHash<QString, Repository> m_repositories;
 
@@ -75,6 +77,8 @@ private:
     // We need to make sure we only handle it once. Could probably go away when everyone is upgraded
     // to libpackagekitqt5 >= 1.0.
     QList<PackageKit::Transaction*> m_unfinishedTransactions;
+
+    QTimer *m_refreshTimer = nullptr;
 };
 
 #endif // UPDATECONTROLLERPACKAGEKIT_H
