@@ -60,7 +60,7 @@ private:
     void trackTransaction(PackageKit::Transaction* transaction);
     void trackUpdateTransaction(PackageKit::Transaction* transaction);
 
-    QString readDistro();
+    void readDistro();
     bool addRepoManually(const QString &repo);
 
 private:
@@ -79,6 +79,9 @@ private:
     QList<PackageKit::Transaction*> m_unfinishedTransactions;
 
     QTimer *m_refreshTimer = nullptr;
+
+    QString m_distro;
+    QString m_component;
 };
 
 #endif // UPDATECONTROLLERPACKAGEKIT_H
