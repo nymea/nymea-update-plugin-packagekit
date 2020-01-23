@@ -58,6 +58,7 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     });
     connect(PackageKit::Daemon::global(), &PackageKit::Daemon::changed, this, [this](){
         qCDebug(dcPlatformUpdate) << "PackageKit ready" << PackageKit::Daemon::distroID();
+        readDistro();
         checkForUpdates();
     });
 }
@@ -385,8 +386,8 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
         }
     });
     connect(getRepos, &PackageKit::Transaction::finished, this, [this](){
-        if (readDistro().isEmpty()) {
-            qCWarning(dcPlatformUpdate) << "Running on an unknonw distro. Not adding testing/experimental repository";
+        if (m_distro.isEmpty()) {
+            qCWarning(dcPlatformUpdate) << "Running on an unknowm distro. Not adding testing/experimental repository";
             return;
         }
         bool foundTesting = false;
@@ -463,39 +464,53 @@ void UpdateControllerPackageKit::trackUpdateTransaction(PackageKit::Transaction 
     });
 }
 
-QString UpdateControllerPackageKit::readDistro()
+void UpdateControllerPackageKit::readDistro()
 {
+    if (!PackageKit::Daemon::mimeTypes().contains("application/x-deb")) {
+        qCWarning(dcPlatformUpdate()) << "Not running on a dpkg based distro. Update features won't be available.";
+        return;
+    }
     QHash<QString, QString> knownDistros;
     // Ubuntu
     knownDistros.insert("16.04", "xenial");
     knownDistros.insert("18.04", "bionic");
     knownDistros.insert("19.04", "disco");
+    knownDistros.insert("19.10", "eoan");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
 
     QStringList distroInfo = PackageKit::Daemon::distroID().split(';');
-    if (PackageKit::Daemon::mimeTypes().contains("application/x-deb") && distroInfo.count() != 3) {
+    qCDebug(dcPlatformUpdate()) << "Running on distro:" << distroInfo;
+    if (distroInfo.count() != 3) {
         qCWarning(dcPlatformUpdate()) << "Cannot read distro info" << PackageKit::Daemon::distroID();
-        return QString();
+        return;
     }
     QString distroVersion = QString(distroInfo.at(1)).remove("\"");
     if (!knownDistros.contains(distroVersion)) {
         qCWarning(dcPlatformUpdate()) << "Distro" << PackageKit::Daemon::distroID() << "is unknown.";
-        return QString();
+        return;
     }
-    return knownDistros.value(distroVersion);
+
+    QString distroCodename = QString(distroInfo.first());
+    if (distroCodename == "raspbian") {
+        m_component = "rpi";
+    } else {
+        m_component = "main";
+    }
+
+    m_distro = knownDistros.value(distroVersion);
 }
 
 bool UpdateControllerPackageKit::addRepoManually(const QString &repo)
 {
-    if (readDistro().isEmpty()) {
+    if (m_distro.isEmpty()) {
         qCWarning(dcPlatformUpdate()) << "Error reading distro info. Cannot add repository" << repo;
         return false;
     }
     QHash<QString, QString> repos;
-    repos.insert("virtual_testing", "deb http://ci-repo.nymea.io/landing-silo " + readDistro() + " main");
-    repos.insert("virtual_experimental", "deb http://ci-repo.nymea.io/experimental-silo " + readDistro() + " main");
+    repos.insert("virtual_testing", "deb http://ci-repo.nymea.io/landing-silo " + m_distro + " " + m_component);
+    repos.insert("virtual_experimental", "deb http://ci-repo.nymea.io/experimental-silo " + m_distro + " " + m_component);
 
     if (!repos.contains(repo)) {
         qCWarning(dcPlatformUpdate()) << "Cannot add unknown repo" << repo;
