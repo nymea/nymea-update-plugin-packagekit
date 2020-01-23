@@ -1,3 +1,11 @@
+nymea-update-plugin-packagekit (0.6) xenial; urgency=medium
+
+  [ Michael Zanetti ]
+  * Support the rpi specific repo
+  * Update copyright
+
+ -- Jenkins <jenkins@nymea.io>  Thu, 23 Jan 2020 13:41:45 +0100
+
 nymea-update-plugin-packagekit (0.5) xenial; urgency=medium
 
   [ Michael Zanetti ]
