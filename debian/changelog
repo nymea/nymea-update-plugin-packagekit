@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (0.7) xenial; urgency=medium
+
+  [ Michael Zanetti ]
+  * Add support for Ubuntu 20.04 focal fossa
+
+ -- Jenkins <jenkins@nymea.io>  Tue, 09 Jun 2020 16:07:58 +0200
+
 nymea-update-plugin-packagekit (0.6) xenial; urgency=medium
 
   [ Michael Zanetti ]
