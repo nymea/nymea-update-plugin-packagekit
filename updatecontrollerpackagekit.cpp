@@ -486,6 +486,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("18.04", "bionic");
     knownDistros.insert("19.04", "disco");
     knownDistros.insert("19.10", "eoan");
+    knownDistros.insert("20.04", "focal");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
