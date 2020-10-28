@@ -3,7 +3,9 @@ QT += network dbus
 
 TARGET = $$qtLibraryTarget(nymea_updatepluginpackagekit)
 TEMPLATE = lib
-QMAKE_CXXFLAGS *= -Werror -std=c++11 -g
+# Packagekit on groovy doesn't build with -Werror. Disabling it for now...
+#QMAKE_CXXFLAGS += -Werror
+QMAKE_CXXFLAGS *= -std=c++11 -g
 
 CONFIG += plugin link_pkgconfig c++11
 PKGCONFIG += nymea
