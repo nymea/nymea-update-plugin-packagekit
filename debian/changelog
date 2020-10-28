@@ -1,7 +1,10 @@
-nymea-update-plugin-packagekit (0.8) UNRELEASED; urgency=medium
+nymea-update-plugin-packagekit (0.8) xenial; urgency=medium
 
+  [ Michael Zanetti ]
+  * No change reubuild
+  * Fix building on Ubuntu groovy
 
- -- Michael Zanetti <michael.zanetti@nymea.io>  Tue, 01 Sep 2020 12:58:07 +0200
+ -- Jenkins <jenkins@nymea.io>  Wed, 28 Oct 2020 17:25:32 +0100
 
 nymea-update-plugin-packagekit (0.7) xenial; urgency=medium
 
