@@ -1,7 +1,9 @@
-nymea-update-plugin-packagekit (0.9) UNRELEASED; urgency=medium
+nymea-update-plugin-packagekit (0.9) xenial; urgency=medium
 
+  [ Michael Zanetti ]
+  * No change rebuild against new ABI
 
- -- Michael Zanetti <michael.zanetti@nymea.io>  Wed, 23 Dec 2020 15:12:12 +0100
+ -- Jenkins <jenkins@nymea.io>  Wed, 23 Dec 2020 15:28:00 +0100
 
 nymea-update-plugin-packagekit (0.8) xenial; urgency=medium
 
