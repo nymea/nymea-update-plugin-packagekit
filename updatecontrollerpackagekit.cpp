@@ -488,6 +488,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("19.10", "eoan");
     knownDistros.insert("20.04", "focal");
     knownDistros.insert("20.10", "groovy");
+    knownDistros.insert("21.04", "hirsute");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
