@@ -490,6 +490,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("20.10", "groovy");
     knownDistros.insert("21.04", "hirsute");
     knownDistros.insert("21.10", "impish");
+    knownDistros.insert("22.04", "jammy");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
