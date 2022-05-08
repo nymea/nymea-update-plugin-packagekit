@@ -375,7 +375,8 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     qCDebug(dcPlatformUpdate()) << "Fetching list of repositories from backend...";
     PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNotSource);
     connect(getRepos, &PackageKit::Transaction::repoDetail, this, [this](const QString &repoId, const QString &description, bool enabled){
-        if (repoId.contains("ci-repo.nymea.io/") && !repoId.contains("deb-src")) {
+        QRegExp repoRegExp(".*(ci-repo|repository).nymea.io/(landing|landing-silo|experimental|experimental-silo).*");
+        if (repoRegExp.exactMatch(repoId) && !repoId.contains("deb-src")) {
             qCDebug(dcPlatformUpdate) << "Found repository enabled in system:" << repoId << description << (enabled ? "(enabled)" : "(disabled)");
             if (m_repositories.contains(repoId)) {
                 m_repositories[repoId].setEnabled(enabled);
@@ -383,9 +384,9 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
                 emit repositoryChanged(m_repositories.value(repoId));
             } else {
                 QString description = repoId;
-                if (repoId.contains("experimental-silo")) {
+                if (repoId.contains("experimental")) {
                     description = "Experimental";
-                } else if (repoId.contains("landing-silo")) {
+                } else if (repoId.contains("landing")) {
                     description = "Testing";
                 }
                 Repository repo(repoId, description, enabled);
@@ -397,24 +398,24 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     });
     connect(getRepos, &PackageKit::Transaction::finished, this, [this](){
         if (m_distro.isEmpty()) {
-            qCWarning(dcPlatformUpdate) << "Running on an unknowm distro. Not adding testing/experimental repository";
+            qCWarning(dcPlatformUpdate) << "Running on an unknown distro. Not adding testing/experimental repository";
             return;
         }
         bool foundTesting = false;
         bool foundExperimental = false;
         foreach (const QString &repoId, m_repositories.keys()) {
-            if (repoId.contains("ci-repo.nymea.io/landing-silo")) {
+            if (repoId.contains(".nymea.io/landing")) {
                 if (m_repositories.contains("virtual_testing")) {
-                    qCDebug(dcPlatformUpdate) << "Replacing virtual_testing with real landing-silo";
+                    qCDebug(dcPlatformUpdate) << "Replacing virtual_testing with real landing";
                     m_repositories.remove("virtual_testing");
                     emit repositoryRemoved("virtual_testing");
                 }
                 foundTesting = true;
                 continue;
             }
-            if (repoId.contains("ci-repo.nymea.io/experimental-silo")) {
+            if (repoId.contains(".nymea.io/experimental")) {
                 if (m_repositories.contains("virtual_experimental")) {
-                    qCDebug(dcPlatformUpdate) << "Replacing virtual_experimental with real experimental-silo";
+                    qCDebug(dcPlatformUpdate) << "Replacing virtual_experimental with real experimental";
                     m_repositories.remove("virtual_experimental");
                     emit repositoryRemoved("virtual_experimental");
                 }
@@ -525,8 +526,8 @@ bool UpdateControllerPackageKit::addRepoManually(const QString &repo)
         return false;
     }
     QHash<QString, QString> repos;
-    repos.insert("virtual_testing", "deb http://ci-repo.nymea.io/landing-silo " + m_distro + " " + m_component);
-    repos.insert("virtual_experimental", "deb http://ci-repo.nymea.io/experimental-silo " + m_distro + " " + m_component);
+    repos.insert("virtual_testing", "deb http://repository.nymea.io/landing " + m_distro + " " + m_component);
+    repos.insert("virtual_experimental", "deb http://repository.nymea.io/experimental " + m_distro + " " + m_component);
 
     if (!repos.contains(repo)) {
         qCWarning(dcPlatformUpdate()) << "Cannot add unknown repo" << repo;
