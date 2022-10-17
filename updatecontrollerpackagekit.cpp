@@ -280,7 +280,7 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     m_unfinishedTransactions.append(getInstalled);
 
     connect(getInstalled, &PackageKit::Transaction::package, this, [this, newPackageList](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary) {
-        if (PackageKit::Daemon::packageName(packageID).contains("nymea")) {
+        if (PackageKit::Daemon::packageName(packageID).contains("nymea") && !PackageKit::Daemon::packageName(packageID).contains("dbgsym")) {
 //            qCDebug(dcPlatformUpdate) << "Have installed package:" << PackageKit::Daemon::packageName(packageID) << PackageKit::Daemon::packageVersion(packageID);
 
             // Note: We're using packageName as ID because packageId is different for different versions of a package.
