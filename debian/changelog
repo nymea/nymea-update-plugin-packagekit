@@ -1,3 +1,13 @@
+nymea-update-plugin-packagekit (1.5.0) jammy; urgency=medium
+
+  [ Michael Zanetti ]
+  * Fix upgrading when a package needs to be removed to complete the
+    update
+  * Hide dbgsym packages
+  * Add Ubuntu 22.10 kinetic
+
+ -- jenkins <developer@nymea.io>  Mon, 17 Oct 2022 11:22:27 +0200
+
 nymea-update-plugin-packagekit (1.4.1) jammy; urgency=medium
 
 
