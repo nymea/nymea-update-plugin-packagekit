@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 *
-* Copyright 2013 - 2020, nymea GmbH
+* Copyright 2013 - 2023, nymea GmbH
 * Contact: contact@nymea.io
 *
 * This file is part of nymea.
@@ -492,6 +492,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("21.10", "impish");
     knownDistros.insert("22.04", "jammy");
     knownDistros.insert("22.10", "kinetic");
+    knownDistros.insert("23.04", "lunar");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
