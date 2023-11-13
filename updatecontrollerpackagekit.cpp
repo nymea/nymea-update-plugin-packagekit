@@ -493,6 +493,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("22.04", "jammy");
     knownDistros.insert("22.10", "kinetic");
     knownDistros.insert("23.04", "lunar");
+    knownDistros.insert("23.10", "mantic");
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
