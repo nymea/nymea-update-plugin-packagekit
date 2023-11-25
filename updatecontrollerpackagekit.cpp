@@ -512,13 +512,7 @@ void UpdateControllerPackageKit::readDistro()
         return;
     }
 
-    QString distroCodename = QString(distroInfo.first());
-    if (distroCodename == "raspbian") {
-        m_component = "rpi";
-    } else {
-        m_component = "main";
-    }
-
+    m_component = "main";
     m_distro = knownDistros.value(distroVersion);
 }
 
