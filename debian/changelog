@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (1.9.0) jammy; urgency=medium
+
+  [ Michael Zanetti ]
+  * Remove RPi repo component, moving RPi users to main
+
+ -- jenkins <developer@nymea.io>  Tue, 28 Nov 2023 10:40:44 +0100
+
 nymea-update-plugin-packagekit (1.8.4) jammy; urgency=medium
 
   [ Simon Stürz ]
