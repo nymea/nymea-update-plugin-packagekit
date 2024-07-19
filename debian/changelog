@@ -1,3 +1,11 @@
+nymea-update-plugin-packagekit (1.9.3) jammy; urgency=medium
+
+  [ Simon Stürz ]
+  * Update debian packaging and compat level
+  * Add ubuntu noble distro
+
+ -- jenkins <developer@nymea.io>  Fri, 19 Jul 2024 21:06:53 +0200
+
 nymea-update-plugin-packagekit (1.9.2) jammy; urgency=medium
 
 
