@@ -481,6 +481,7 @@ void UpdateControllerPackageKit::readDistro()
         return;
     }
     QHash<QString, QString> knownDistros;
+
     // Ubuntu
     knownDistros.insert("16.04", "xenial");
     knownDistros.insert("18.04", "bionic");
@@ -494,6 +495,8 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("22.10", "kinetic");
     knownDistros.insert("23.04", "lunar");
     knownDistros.insert("23.10", "mantic");
+    knownDistros.insert("24.04", "noble");
+
     // Debian
     knownDistros.insert("9", "stretch");
     knownDistros.insert("10", "buster");
