@@ -141,7 +141,7 @@ bool UpdateControllerPackageKit::startUpdate(const QStringList &packageIds)
         m_unfinishedTransactions.append(getUpdates);
         connect(getUpdates, &PackageKit::Transaction::package, this, [packageIds, upgradeIds](PackageKit::Transaction::Info info, const QString &packageID, const QString &summary){
             qCDebug(dcPlatformUpdate()) << "Found package:" << packageID << info << summary;
-            if ((packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) && info == PackageKit::Transaction::InfoNormal) {
+            if ((packageIds.isEmpty() || packageIds.contains(PackageKit::Daemon::packageName(packageID))) /*&& (info == PackageKit::Transaction::InfoNormal)*/) {
                 qCDebug(dcPlatformUpdate) << "Adding package to be updated:" << packageID;
                 upgradeIds->insert(PackageKit::Daemon::packageName(packageID), packageID);
             }
