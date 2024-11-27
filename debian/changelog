@@ -1,3 +1,11 @@
+nymea-update-plugin-packagekit (1.10.0) jammy; urgency=medium
+
+  [ Simon Stürz ]
+  * Fix update based on bug in packagekit reporting invalid Info on
+    upgrade
+
+ -- jenkins <developer@nymea.io>  Wed, 27 Nov 2024 09:09:23 +0100
+
 nymea-update-plugin-packagekit (1.9.5) jammy; urgency=medium
 
 
