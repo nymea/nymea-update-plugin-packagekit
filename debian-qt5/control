@@ -1,0 +1,32 @@
+Source: nymea-update-plugin-packagekit
+Section: utils
+Priority: optional
+Maintainer: nymea GmbH <developer@nymea.io>
+Standards-Version: 4.6.0
+Homepage: https://nymea.io
+Build-Depends: debhelper (>= 9.0.0),
+               dpkg-dev (>= 1.16.1~),
+               libnymea-dev (>= 0.27.0),
+               libpackagekitqt5-dev,
+               qt5-qmake,
+               qtbase5-dev,
+
+Package: nymea-update-plugin-packagekit
+Architecture: any
+Section: metapackages
+Multi-Arch: same
+Depends: libnymea1 (>= 0.13),
+         ${misc:Depends},
+         packagekit,
+         libpackagekitqt5-0 | libpackagekitqt5-1,
+Provides: nymea-update-plugin-impl
+Description: PackageKit platform plugin for nymea
+ The nymea daemon is a plugin based IoT (Internet of Things) server. The
+ server works like a translator for devices, things and services and
+ allows them to interact.
+ With the powerful rule engine you are able to connect any device available 
+ in the system and create individual scenes and behaviors for your environment.
+ .
+ This package will install the platform adaption for PackageKit based platforms.
+
+
