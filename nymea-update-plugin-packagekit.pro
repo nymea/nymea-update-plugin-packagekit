@@ -13,9 +13,11 @@ greaterThan(QT_MAJOR_VERSION, 5) {
     # disable by default until fixed
     CONFIG += withoutpython
 
-    # libpackagekitqt6-dev
-    PKGCONFIG += packagekitqt6
-
+    # The bugs still exist in the libpackagekitqt6-dev pkgconfig
+    # so we add the packagekit without the convinience of pkgconfig
+    #PKGCONFIG += packagekitqt6
+    INCLUDEPATH += /usr/include/packagekitqt6/PackageKit
+    LIBS += -lpackagekitqt6
 } else {
     message("Building using Qt5 support")
     CONFIG *= c++11
@@ -32,8 +34,10 @@ greaterThan(QT_MAJOR_VERSION, 5) {
     LIBS += -lpackagekitqt5
 }
 
-QMAKE_CXXFLAGS += -Werror
 QMAKE_CXXFLAGS *= -g
+
+# There are several warnings in libpackagekitqt(5|6)
+#QMAKE_CXXFLAGS += -Werror
 
 CONFIG += plugin link_pkgconfig
 PKGCONFIG += nymea
@@ -43,7 +47,6 @@ SOURCES += \
 
 HEADERS += \
     updatecontrollerpackagekit.h
-
 
 target.path = $$[QT_INSTALL_LIBS]/nymea/platform/
 INSTALLS += target

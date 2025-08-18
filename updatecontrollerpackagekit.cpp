@@ -1,6 +1,6 @@
 /* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
 *
-* Copyright 2013 - 2023, nymea GmbH
+* Copyright 2013 - 2025, nymea GmbH
 * Contact: contact@nymea.io
 *
 * This file is part of nymea.
@@ -37,6 +37,7 @@
 #include <QTimer>
 #include <QPointer>
 #include <QFile>
+#include <QRegularExpression>
 
 UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     PlatformUpdateController(parent)
@@ -374,8 +375,8 @@ void UpdateControllerPackageKit::refreshFromPackageKit()
     qCDebug(dcPlatformUpdate()) << "Fetching list of repositories from backend...";
     PackageKit::Transaction *getRepos = PackageKit::Daemon::getRepoList(PackageKit::Transaction::FilterNotSource);
     connect(getRepos, &PackageKit::Transaction::repoDetail, this, [this](const QString &repoId, const QString &description, bool enabled){
-        QRegExp repoRegExp(".*(ci-repo|repository).nymea.io/(landing|landing-silo|experimental|experimental-silo).*");
-        if (repoRegExp.exactMatch(repoId) && !repoId.contains("deb-src")) {
+        QRegularExpression repoRegExp(".*(ci-repo|repository).nymea.io/(landing|landing-silo|experimental|experimental-silo).*");
+        if (repoRegExp.match(repoId).hasMatch() && !repoId.contains("deb-src")) {
             qCDebug(dcPlatformUpdate) << "Found repository enabled in system:" << repoId << description << (enabled ? "(enabled)" : "(disabled)");
             if (m_repositories.contains(repoId)) {
                 m_repositories[repoId].setEnabled(enabled);
