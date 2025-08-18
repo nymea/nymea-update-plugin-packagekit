@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (1.13.0) jammy; urgency=medium
+
+  [ Simon Stürz ]
+  * Add Qt6 support
+
+ -- jenkins <developer@nymea.io>  Mon, 18 Aug 2025 14:03:19 +0200
+
 nymea-update-plugin-packagekit (1.11.1) jammy; urgency=medium
 
 
