@@ -1,3 +1,8 @@
+nymea-update-plugin-packagekit (1.12.1) jammy; urgency=medium
+
+
+ -- jenkins <developer@nymea.io>  Mon, 13 Oct 2025 15:28:50 +0200
+
 nymea-update-plugin-packagekit (1.12.0) jammy; urgency=medium
 
   [ Simon Stürz ]
