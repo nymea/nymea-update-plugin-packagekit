@@ -503,6 +503,7 @@ void UpdateControllerPackageKit::readDistro()
     knownDistros.insert("10", "buster");
     knownDistros.insert("11", "bullseye");
     knownDistros.insert("12", "bookworm");
+    knownDistros.insert("13", "trixie");
 
     QStringList distroInfo = PackageKit::Daemon::distroID().split(';');
     qCDebug(dcPlatformUpdate()) << "Running on distro:" << distroInfo;
