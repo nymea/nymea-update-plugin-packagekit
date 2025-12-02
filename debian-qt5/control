@@ -1,7 +1,7 @@
 Source: nymea-update-plugin-packagekit
 Section: utils
 Priority: optional
-Maintainer: nymea GmbH <developer@nymea.io>
+Maintainer: chargebyte austria GmbH <contact@nymea.io>
 Standards-Version: 4.6.0
 Homepage: https://nymea.io
 Build-Depends: debhelper (>= 9.0.0),
@@ -28,5 +28,4 @@ Description: PackageKit platform plugin for nymea
  in the system and create individual scenes and behaviors for your environment.
  .
  This package will install the platform adaption for PackageKit based platforms.
-
 
