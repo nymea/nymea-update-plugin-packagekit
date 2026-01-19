@@ -68,6 +68,11 @@ UpdateControllerPackageKit::UpdateControllerPackageKit(QObject *parent):
     });
 }
 
+PlatformUpdateController::UpdateType UpdateControllerPackageKit::updateType() const
+{
+    return PlatformUpdateController::UpdateTypePackageManager;
+}
+
 bool UpdateControllerPackageKit::updateManagementAvailable() const
 {
     return m_available;
