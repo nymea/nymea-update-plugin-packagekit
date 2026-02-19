@@ -42,6 +42,7 @@ class UpdateControllerPackageKit: public PlatformUpdateController
 public:
     explicit UpdateControllerPackageKit(QObject *parent = nullptr);
 
+    PlatformUpdateController::UpdateType updateType() const override;
     bool updateManagementAvailable() const override;
 
     bool checkForUpdates() override;
