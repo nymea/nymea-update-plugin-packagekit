@@ -14,9 +14,14 @@ greaterThan(QT_MAJOR_VERSION, 5) {
     CONFIG += withoutpython
 
     # The bugs still exist in the libpackagekitqt6-dev pkgconfig
-    # so we add the packagekit without the convinience of pkgconfig
+    # so we add the packagekit without the convenience of pkgconfig.
+    # Different distros ship the headers in different directories.
     #PKGCONFIG += packagekitqt6
+    INCLUDEPATH += /usr/include/PackageKitQt
+    INCLUDEPATH += /usr/include/PackageKitQt/PackageKit
+    INCLUDEPATH += /usr/include/packagekitqt6
     INCLUDEPATH += /usr/include/packagekitqt6/PackageKit
+    INCLUDEPATH += /usr/include/PackageKit/packagekitqt6
     LIBS += -lpackagekitqt6
 } else {
     message("Building using Qt5 support")
