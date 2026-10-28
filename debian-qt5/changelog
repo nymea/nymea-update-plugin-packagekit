@@ -1,3 +1,10 @@
+nymea-update-plugin-packagekit (1.17.0) resolute; urgency=medium
+
+  [ Simon Stürz ]
+  * Update supported distributions
+
+ -- jenkins <developer@nymea.io>  Wed, 28 Oct 2026 14:48:29 +0100
+
 nymea-update-plugin-packagekit (1.16.2) resolute; urgency=medium
 
 
